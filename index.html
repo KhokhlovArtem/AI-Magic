@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111316">
+  <meta name="description" content="Изучай искусственный интеллект короткими квизами: понятная теория, дерево навыков и личный прогресс.">
+  <title>AI Magic — дерево навыков</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#tree-heading">Перейти к навыкам</a>
+  <header class="header">
+    <a href="#" class="logo" aria-label="AI Magic, главная"><span aria-hidden="true">✳</span> AI<b>MAGIC</b></a>
+    <nav aria-label="Основная навигация"><a class="nav-current" href="#tree-heading">Дерево навыков</a><a class="nav-library" href="library.html">Литература</a><button class="text-button" id="help">Как играть</button></nav>
+    <span class="local-label"><span class="status-dot"></span> Твой личный прогресс</span>
+  </header>
+  <main class="wrap">
+    <div id="notice" class="notice" role="status" hidden></div>
+    <section class="intro" aria-labelledby="page-title">
+      <div><p class="eyebrow">Учись. Пробуй. Открывай новое.</p><h1 id="page-title">Дерево навыков</h1><p class="description">От первого запроса до самостоятельной работы с ИИ.</p><p class="track-summary" id="trackProgress"></p></div>
+      <div class="balances">
+        <div class="balance"><span class="balance-icon" aria-hidden="true">ϟ</span><div><strong><span id="energy">60</span><small> / 60</small></strong><span class="balance-label" id="refill">Энергия полная</span></div></div>
+        <div class="balance"><span class="coin-icon" aria-hidden="true">✦</span><div><strong id="coins">0</strong><span class="balance-label">Монеты за знания</span></div></div>
+      </div>
+    </section>
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="section-label">Твоя экспедиция</p>
+        <div class="panel route"><p class="route-title">Твой учебный трек</p><nav id="route" aria-label="Главы трека"></nav></div>
+        <div class="tip"><span aria-hidden="true">✳</span><strong>Пять вопросов — один шаг</strong><p>Прочитай теорию, пройди квиз и открой следующий навык. Для зачёта нужно 4 из 5.</p><button class="link-button" id="rules">Все правила →</button></div>
+      </aside>
+      <section class="chapters" aria-labelledby="tree-heading"><h2 id="tree-heading" class="sr-only" tabindex="-1">Главы обучения</h2><div id="chapters"></div></section>
+      <aside class="right">
+        <p class="section-label">Личная статистика</p>
+        <section class="panel progress-card" aria-labelledby="progress-heading"><h2 id="progress-heading">Твой прогресс</h2><p class="muted small">Пройденные уровни понимания по направлениям</p><div id="stats"></div><div class="divider"></div><dl class="numbers"><div><dt>Ответов дано</dt><dd id="answered">0</dd></div><div><dt>Точность</dt><dd id="accuracy">—</dd></div><div><dt>Получено XP</dt><dd id="xp">0</dd></div></dl></section>
+        <section class="recommend" aria-labelledby="rec-heading"><p class="eyebrow" id="rec-heading">Следующий шаг</p><h3 id="recTitle">Что такое ИИ</h3><p id="recText"></p><button class="primary" id="recButton">Начать обучение →</button></section>
+        <div class="save-info"><span class="status-dot"></span><p>Прогресс хранится в этом браузере.<br>Квиз можно закрыть и продолжить позже.</p></div>
+      </aside>
+    </div>
+    <footer class="footer"><span>AI MAGIC <span class="muted">/ Маленькие шаги. Новые возможности.</span></span><button class="text-button" id="reset">Сбросить прогресс</button></footer>
+  </main>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-top"><span>✦ AI MAGIC <span class="muted">/ ОБУЧЕНИЕ</span></span><button id="closeDialog" class="icon-button" aria-label="Закрыть окно">×</button></div><div id="dialogContent"></div></dialog>
+  <noscript><p class="notice">Для квизов нужно включить JavaScript в браузере.</p></noscript>
+</body>
+</html>
