@@ -1,0 +1,41 @@
+name: Доработка вопроса
+description: Отметить неясную формулировку, спорный ответ или проблему в задании.
+title: "[Вопрос] "
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Тема, уровень и текст задания
+      description: Скопируйте текст, чтобы редактор смог найти конкретный вопрос.
+      placeholder: "Тема: …\nУровень: …\nТекст: …"
+    validations:
+      required: true
+  - type: dropdown
+    id: reason
+    attributes:
+      label: Что требует проверки?
+      options:
+        - Непонятная формулировка
+        - Спорный правильный ответ
+        - Несколько подходящих решений
+        - Порядок или состав блоков
+        - Опечатка
+        - Уровень сложности
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: comment
+    attributes:
+      label: Комментарий или предлагаемая формулировка
+      description: Можно объяснить проблему или предложить исправление.
+  - type: textarea
+    id: submitted-answer
+    attributes:
+      label: Ваш ответ и результат проверки
+      description: Если уже отвечали, укажите выбранный вариант или последовательность блоков.
+  - type: input
+    id: site-version
+    attributes:
+      label: Адрес игры или версия
+      placeholder: https://khokhlovartem.github.io/AI-Magic/
