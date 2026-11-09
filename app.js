@@ -1,6 +1,7 @@
 import { curriculum, chapters } from './curriculum.js';
 import { icon } from './icons.js';
-import { STORAGE_KEY, LEGACY_KEY, createState, normalizeState, refreshEnergy, unlocked, passedLevels, targetLevel, levelAvailable, startQuiz, submitAnswer, currentQuestion, nextQuestion, finishQuiz, setDraftBlocks } from './engine.js';
+import { shopItems, hasChapterPass } from './shop.js';
+import { STORAGE_KEY, LEGACY_KEY, createState, normalizeState, refreshEnergy, unlocked, missingPrerequisites, chapterAvailable, purchaseChapter, passedLevels, targetLevel, levelAvailable, startQuiz, submitAnswer, currentQuestion, nextQuestion, finishQuiz, setDraftBlocks } from './engine.js';
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const skillById = id => curriculum.find(s => s.id === id);
@@ -23,7 +24,7 @@ function refillText() {
   const minutes = Math.max(1, Math.ceil((state.refillAt - Date.now()) / 60000));
   return `До 60 через ${Math.floor(minutes / 60)} ч ${String(minutes % 60).padStart(2, '0')} мин`;
 }
-function balances() { $('#energy').textContent = state.energy; $('#coins').textContent = state.coins; $('#refill').textContent = refillText(); }
+function balances() { $('#energy').textContent = state.energy; $('#coins').textContent = state.coins; $('#refill').textContent = refillText(); $('#openShopBalance').setAttribute('aria-label', `Открыть магазин. Баланс: ${state.coins} монет`); }
 function openChapter(id, focus = false) {
   openChapters.add(id);
   const details = $(`[data-chapter-panel="${id}"]`);
@@ -43,7 +44,10 @@ function render() {
   $('#chapters').innerHTML = chapters.map((chapter, index) => {
     const skills = curriculum.filter(s => s.chapter === chapter.id), n = skills.reduce((sum, s) => sum + passedLevels(state, s), 0);
     const rows = [...new Set(skills.map(s => s.row))].sort((a, b) => a - b);
-    return `<details class="chapter-panel" data-chapter-panel="${chapter.id}" ${openChapters.has(chapter.id) ? 'open' : ''}><summary><span class="eyebrow">Глава ${String(index + 1).padStart(2, '0')}</span><span class="chapter-title">${esc(chapter.title)}<span class="chevron" aria-hidden="true">⌃</span></span><span class="chapter-subtitle">${esc(chapter.subtitle)}</span><span class="chapter-progress">Уровни ${n} / ${skills.length * 3}</span></summary><div class="chapter-body"><p class="chapter-goal">${esc(chapter.goal)}</p><div class="legend"><span><i class="legend-dot ready"></i>Доступно</span><span><i class="legend-dot done"></i>3 уровня пройдены</span><span><i class="legend-dot locked"></i>Закрыто</span></div><div class="tree chapter-tree"><svg class="connections" aria-hidden="true"></svg>${rows.map(row => `<div class="skill-row">${skills.filter(s => s.row === row).map(renderNode).join('')}</div>`).join('')}</div><div class="board-foot"><span aria-hidden="true">✦</span><p>Первого уровня достаточно для открытия следующих тем. Уровни 2 и 3 углубляют понимание.</p></div></div></details>`;
+    const item = shopItems.find(item => item.chapterId === chapter.id);
+    const access = hasChapterPass(state, chapter.id) ? '<span class="chapter-pass">✦ Досрочный доступ куплен</span>' : '';
+    const offer = item && !chapterAvailable(state, chapter.id, curriculum) ? `<div class="chapter-offer"><p>Открой главу через обучение или досрочно за <strong>${item.price} монет</strong>.</p><button class="link-button" data-open-shop>В магазин →</button></div>` : '';
+    return `<details class="chapter-panel" data-chapter-panel="${chapter.id}" ${openChapters.has(chapter.id) ? 'open' : ''}><summary><span class="eyebrow">Глава ${String(index + 1).padStart(2, '0')}</span><span class="chapter-title">${esc(chapter.title)}<span class="chevron" aria-hidden="true">⌃</span></span><span class="chapter-subtitle">${esc(chapter.subtitle)}</span><span class="chapter-progress">Уровни ${n} / ${skills.length * 3}</span>${access}</summary><div class="chapter-body"><p class="chapter-goal">${esc(chapter.goal)}</p>${offer}<div class="legend"><span><i class="legend-dot ready"></i>Доступно</span><span><i class="legend-dot done"></i>3 уровня пройдены</span><span><i class="legend-dot locked"></i>Закрыто</span></div><div class="tree chapter-tree"><svg class="connections" aria-hidden="true"></svg>${rows.map(row => `<div class="skill-row">${skills.filter(s => s.row === row).map(renderNode).join('')}</div>`).join('')}</div><div class="board-foot"><span aria-hidden="true">✦</span><p>Первого уровня достаточно для открытия следующих тем. Уровни 2 и 3 углубляют понимание.</p></div></div></details>`;
   }).join('');
   document.querySelectorAll('[data-chapter-panel]').forEach(details => details.addEventListener('toggle', () => {
     if (details.open) openChapters.add(details.dataset.chapterPanel); else openChapters.delete(details.dataset.chapterPanel);
@@ -88,7 +92,7 @@ function drawConnections() {
   });
 }
 new ResizeObserver(drawConnections).observe($('#chapters'));
-$('#chapters').addEventListener('click', e => { const node = e.target.closest('[data-skill]'); if (node) showSkill(node.dataset.skill); });
+$('#chapters').addEventListener('click', e => { if (e.target.closest('[data-open-shop]')) { showShop(); return; } const node = e.target.closest('[data-skill]'); if (node) showSkill(node.dataset.skill); });
 $('#route').addEventListener('click', e => { const button = e.target.closest('[data-chapter]'); if (button) openChapter(button.dataset.chapter, true); });
 const dialog = $('#dialog');
 const heading = text => `<h2 class="dialog-title" id="dialog-title" tabindex="-1">${esc(text)}</h2>`;
@@ -104,9 +108,12 @@ dialog.addEventListener('click', e => { if (e.target === dialog) { const r = dia
 function showSkill(id, levelId, fromQuiz = false) {
   const skill = skillById(id); openChapter(skill.chapter);
   if (!unlocked(state, skill, curriculum)) {
-    const missing = skill.prerequisites.map(skillById).filter(s => !passedLevels(state, s));
-    show(`<p class="dialog-eyebrow">Следующая цель</p>${heading(skill.name)}<p class="dialog-copy">${esc(skill.lesson.goal)}</p><p class="dialog-copy">Сначала пройди первый уровень этих тем:</p><div class="dependency-list">${missing.map(s => `<button class="secondary" data-dependency="${s.id}">${esc(s.name)} →</button>`).join('')}</div>`, 'locked', id);
-    dialog.querySelectorAll('[data-dependency]').forEach(b => b.onclick = () => showSkill(b.dataset.dependency)); return;
+    const missing = missingPrerequisites(state, skill, curriculum).map(skillById);
+    const offer = shopItems.find(item => item.chapterId === skill.chapter);
+    show(`<p class="dialog-eyebrow">Следующая цель</p>${heading(skill.name)}<p class="dialog-copy">${esc(skill.lesson.goal)}</p><p class="dialog-copy">Сначала пройди первый уровень этих тем:</p><div class="dependency-list">${missing.map(s => `<button class="secondary" data-dependency="${s.id}">${esc(s.name)} →</button>`).join('')}</div>${offer && !chapterAvailable(state, skill.chapter, curriculum) ? `<div class="chapter-offer"><p>Или открой вход в главу досрочно за ${offer.price} монет. Порядок тем внутри главы сохраняется.</p><button class="link-button" data-open-shop>Посмотреть в магазине →</button></div>` : ''}`, 'locked', id);
+    dialog.querySelectorAll('[data-dependency]').forEach(b => b.onclick = () => showSkill(b.dataset.dependency));
+    if (dialog.querySelector('[data-open-shop]')) dialog.querySelector('[data-open-shop]').onclick = () => showShop();
+    return;
   }
   if (state.active?.skillId === id && !levelId && !fromQuiz) { showQuiz(); return; }
   const level = skill.levels.find(l => l.id === levelId) || targetLevel(state, skill), index = skill.levels.indexOf(level), progress = state.progress[`${id}:${level.id}`];
@@ -159,18 +166,78 @@ function showResult() {
   $('#finish').onclick = () => { commit(finishQuiz); closeDialog(); };
   $('#revisit').onclick = () => { commit(finishQuiz); showSkill(skill.id, passed && index < 2 ? skill.levels[index + 1].id : level.id); };
 }
+function showShop(focus = true, message = '') {
+  const maxCoins = new Set(curriculum.flatMap(skill => skill.levels.flatMap(level => level.questions.map(q => q.id)))).size;
+  const cards = shopItems.map(item => {
+    const chapter = chapters.find(chapter => chapter.id === item.chapterId);
+    const number = String(chapters.indexOf(chapter) + 1).padStart(2, '0');
+    const purchased = hasChapterPass(state, item.chapterId), available = chapterAvailable(state, item.chapterId, curriculum);
+    const shortfall = Math.max(0, item.price - state.coins);
+    const status = purchased ? 'Досрочный доступ куплен' : available ? 'Открыта через обучение' : 'Досрочный доступ';
+    const action = available
+      ? `<button class="secondary full" data-shop-chapter="${item.chapterId}">К главе ${number} →</button>`
+      : `<button class="primary full" data-buy="${item.id}" ${shortfall ? 'disabled' : ''}>${shortfall ? `Нужно ещё ${shortfall} монет` : `Открыть за ${item.price} монет`}</button>`;
+    return `<article class="shop-card ${available ? 'shop-owned' : ''}">
+      <div class="shop-card-top"><span class="shop-chapter-number" aria-hidden="true">${number}</span><span class="shop-status">${purchased ? '✓ ' : ''}${status}</span></div>
+      <h3>${esc(chapter.title)}</h3><p>${esc(chapter.goal)}</p>
+      <div class="shop-price"><span aria-hidden="true">✦</span> ${item.price}<small>монет · один раз</small></div>
+      <p class="shop-detail">${available ? 'Доступ уже есть — платить за него снова не нужно.' : 'Откроется первая тема. Следующие темы и уровни проходят по порядку.'}</p>${action}
+    </article>`;
+  }).join('');
+  show(`<p class="dialog-eyebrow">Магазин / новые маршруты</p>${heading('Открывай больше за монеты')}
+    <p class="dialog-copy">Выбери следующую главу для досрочного старта. Все главы можно открыть и через обучение.</p>
+    <div class="shop-wallet"><span>Твой баланс</span><strong><span aria-hidden="true">✦</span> ${state.coins} <small>монет</small></strong></div>
+    ${message ? `<p class="shop-message" role="status">${esc(message)}</p>` : ''}
+    <div class="shop-grid">${cards}</div>
+    <p class="shop-note">За новый правильный ответ — 1 монета. Повторение уже решённого задания не приносит монет. Покупка сохраняется вместе с прогрессом в этом браузере.</p>
+    ${maxCoins < Math.min(...shopItems.map(item => item.price)) ? `<div class="shop-future"><strong>Больше тем — больше возможностей</strong><p>В текущем треке можно заработать до ${maxCoins} монет. С новыми темами появятся монеты для досрочного доступа. Пока продолжай открывать главы через обучение.</p></div>` : ''}`, 'shop', undefined, undefined, focus);
+  dialog.querySelectorAll('[data-buy]').forEach(button => button.onclick = () => showPurchase(button.dataset.buy));
+  dialog.querySelectorAll('[data-shop-chapter]').forEach(button => button.onclick = () => { closeDialog(); openChapter(button.dataset.shopChapter, true); });
+}
+function showPurchase(itemId, focus = true, error = '') {
+  const item = shopItems.find(item => item.id === itemId);
+  if (!item) { showShop(); return; }
+  const chapter = chapters.find(chapter => chapter.id === item.chapterId);
+  if (chapterAvailable(state, item.chapterId, curriculum)) { showShop(focus, 'Эта глава уже открыта. Покупка не нужна.'); return; }
+  const affordable = state.coins >= item.price;
+  show(`<p class="dialog-eyebrow">Подтверждение покупки</p>${heading(chapter.title)}
+    <p class="dialog-copy">Откроется вход в главу. Порядок тем и уровней внутри неё сохраняется. Покупка не даёт зачётов и не расходует энергию.</p>
+    <dl class="purchase-summary"><div><dt>Сейчас на счёте</dt><dd>${state.coins} монет</dd></div><div><dt>Стоимость</dt><dd>−${item.price} монет</dd></div>${affordable ? `<div class="purchase-total"><dt>Останется после покупки</dt><dd>${state.coins - item.price} монет</dd></div>` : ''}</dl>
+    ${error || !affordable ? `<p class="shop-message" role="status">${esc(error || `Нужно ещё ${item.price - state.coins} монет.`)}</p>` : ''}
+    <div class="dialog-actions"><button class="secondary" id="cancelPurchase">Вернуться в магазин</button><button class="primary" id="confirmPurchase" ${!affordable ? 'disabled' : ''}>Подтвердить · ${item.price} монет</button></div>`, 'purchase', undefined, undefined, focus);
+  view.itemId = itemId;
+  $('#cancelPurchase').onclick = () => showShop();
+  $('#confirmPurchase').onclick = async () => {
+    $('#confirmPurchase').disabled = true;
+    const buy = () => {
+      // Read the latest save while holding the browser lock, including other tabs' purchases.
+      try { const saved = localStorage.getItem(STORAGE_KEY); if (saved) state = normalizeState(JSON.parse(saved), curriculum); } catch { /* Continue the current session if storage is unavailable. */ }
+      const before = state;
+      commit(state => purchaseChapter(state, itemId, curriculum));
+      openChapters.add(item.chapterId);
+      showShop(true, state === before ? 'Глава уже открыта. Монеты не списаны.' : `Глава «${chapter.title}» открыта. Списано ${item.price} монет.`);
+    };
+    try {
+      if (navigator.locks?.request) await navigator.locks.request(`${STORAGE_KEY}-shop`, buy);
+      else buy();
+    } catch (error) { showPurchase(itemId, true, error.message); }
+  };
+}
+$('#shop').onclick = () => showShop();
+$('#openShopBalance').onclick = () => showShop();
 function showRules() {
-  show(`<p class="dialog-eyebrow">Правила игры</p>${heading('От понимания к решению')}<ol class="rules-list"><li><strong>Раскрывай главы.</strong> Несколько глав могут быть открыты одновременно.</li><li><strong>У каждой темы три уровня.</strong> 1 — понимаю, 2 — применяю, 3 — собираю решение. Уровни внутри темы открываются по порядку; для следующей темы достаточно первого уровня её зависимостей.</li><li><strong>Квиз — пять заданий.</strong> Для зачёта нужны четыре верных решения. Есть выбор ответа и сборка последовательности из блоков. Лишние блоки нужно оставить в наборе.</li><li><strong>Собирай без спешки.</strong> Добавление и перестановка блоков бесплатны. Одна энергия тратится только при отправке готового решения. Для начала квиза нужно пять энергии.</li><li><strong>Можно продолжить позже.</strong> Сохраняются ответы, порядок вопросов и незавершённая сборка. Через восемь часов после первого потраченного балла энергия восстановится до 60.</li><li><strong>Награды — за новые правильные решения.</strong> За первый верный ответ на задание: одна монета и 10 XP. Повторные ошибки не отменяют зачёт. Монеты пока коллекционные.</li></ol><p class="dialog-note">Прогресс хранится в этом браузере. Книги на странице литературы дополняют практику.</p><button class="primary full" id="rulesDone">Понятно, к навыкам →</button>`, 'rules');
+  show(`<p class="dialog-eyebrow">Правила игры</p>${heading('От понимания к решению')}<ol class="rules-list"><li><strong>Раскрывай главы.</strong> Несколько глав могут быть открыты одновременно.</li><li><strong>У каждой темы три уровня.</strong> 1 — понимаю, 2 — применяю, 3 — собираю решение. Уровни внутри темы открываются по порядку; для следующей темы достаточно первого уровня её зависимостей.</li><li><strong>Квиз — пять заданий.</strong> Для зачёта нужны четыре верных решения. Есть выбор ответа и сборка последовательности из блоков. Лишние блоки нужно оставить в наборе.</li><li><strong>Собирай без спешки.</strong> Добавление и перестановка блоков бесплатны. Одна энергия тратится только при отправке готового решения. Для начала квиза нужно пять энергии.</li><li><strong>Можно продолжить позже.</strong> Сохраняются ответы, порядок вопросов и незавершённая сборка. Через восемь часов после первого потраченного балла энергия восстановится до 60.</li><li><strong>Награды — за новые правильные решения.</strong> За первый верный ответ на задание: одна монета и 10 XP. Повторные ошибки не отменяют зачёт. В магазине монеты можно обменять на досрочный доступ к главам. Обычный путь через обучение сохраняется.</li></ol><p class="dialog-note">Прогресс хранится в этом браузере. Книги на странице литературы дополняют практику.</p><button class="primary full" id="rulesDone">Понятно, к навыкам →</button>`, 'rules');
   $('#rulesDone').onclick = closeDialog;
 }
 $('#help').onclick = showRules; $('#rules').onclick = showRules;
 $('#reset').onclick = () => {
-  show(`${heading('Начать заново?')}<p class="dialog-copy">Будут сброшены уровни, награды, статистика и текущий квиз в этом браузере. Вернуть их после сброса не получится.</p><div class="dialog-actions"><button class="primary" id="cancelReset">Сохранить прогресс</button><button class="secondary danger" id="confirmReset">Сбросить всё</button></div>`, 'reset');
+  show(`${heading('Начать заново?')}<p class="dialog-copy">Будут сброшены уровни, награды, покупки, статистика и текущий квиз в этом браузере. Вернуть их после сброса не получится.</p><div class="dialog-actions"><button class="primary" id="cancelReset">Сохранить прогресс</button><button class="secondary danger" id="confirmReset">Сбросить всё</button></div>`, 'reset');
   $('#cancelReset').onclick = closeDialog; $('#confirmReset').onclick = () => { state = createState(); openChapters.clear(); openChapters.add(chapters[0].id); persist(); closeDialog(); notice('Прогресс сброшен. Можно начать новый путь.'); };
 };
 window.addEventListener('storage', e => {
   if (e.key !== STORAGE_KEY) return;
-  try { const previousView = view; state = normalizeState(JSON.parse(e.newValue || 'null'), curriculum); render(); if (dialog.open && ['quiz', 'result'].includes(previousView?.kind)) showQuiz(); else if (dialog.open && previousView?.skillId) showSkill(previousView.skillId, previousView.levelId, true); } catch { /* Keep the current session if external data is invalid. */ }
+  try { const previousView = view; state = normalizeState(JSON.parse(e.newValue || 'null'), curriculum); render(); if (dialog.open && previousView?.kind === 'shop') showShop(false); else if (dialog.open && previousView?.kind === 'purchase') showPurchase(previousView.itemId, false); else if (dialog.open && ['quiz', 'result'].includes(previousView?.kind)) showQuiz(); else if (dialog.open && previousView?.skillId) showSkill(previousView.skillId, previousView.levelId, true); } catch { /* Keep the current session if external data is invalid. */ }
 });
 setInterval(() => { const refreshed = refreshEnergy(state); if (refreshed !== state) { state = refreshed; persist(); render(); if (dialog.open && view?.kind === 'skill') showSkill(view.skillId, view.levelId, true); } else balances(); }, 30000);
 render();
+if (location.hash === '#shop') showShop();

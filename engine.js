@@ -1,3 +1,5 @@
+import { shopItems, hasChapterPass, normalizePurchases } from './shop.js';
+
 export const STORAGE_KEY = 'ai-magic-v2';
 export const LEGACY_KEY = 'ai-magic-v1';
 export const ENERGY_LIMIT = 60;
@@ -6,7 +8,7 @@ export const QUIZ_SIZE = 5;
 const count = n => Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 const levelKey = (skill, level) => `${skill.id}:${level.id}`;
 export function createState() {
-  return { version: 2, progress: {}, rewards: [], energy: ENERGY_LIMIT, refillAt: null, coins: 0, xp: 0, answered: 0, correct: 0, active: null, history: [] };
+  return { version: 2, progress: {}, rewards: [], purchases: [], energy: ENERGY_LIMIT, refillAt: null, coins: 0, xp: 0, answered: 0, correct: 0, active: null, history: [] };
 }
 export function refreshEnergy(state, now = Date.now()) {
   return state.refillAt && now >= state.refillAt ? { ...state, energy: ENERGY_LIMIT, refillAt: null } : state;
@@ -14,11 +16,26 @@ export function refreshEnergy(state, now = Date.now()) {
 export function passedLevels(state, skill) {
   return skill.levels.filter(l => state.progress[levelKey(skill, l)]?.passed).length;
 }
-export function unlocked(state, skill, curriculum) {
-  return skill.prerequisites.every(id => {
+export function missingPrerequisites(state, skill, curriculum) {
+  return skill.prerequisites.filter(id => {
     const prerequisite = curriculum.find(s => s.id === id);
-    return prerequisite && passedLevels(state, prerequisite) >= 1;
+    return !prerequisite || (passedLevels(state, prerequisite) < 1 && !(prerequisite.chapter !== skill.chapter && hasChapterPass(state, skill.chapter)));
   });
+}
+export function unlocked(state, skill, curriculum) {
+  return missingPrerequisites(state, skill, curriculum).length === 0;
+}
+export function chapterAvailable(state, chapterId, curriculum) {
+  return curriculum.some(skill => skill.chapter === chapterId && unlocked(state, skill, curriculum));
+}
+export function purchaseChapter(state, itemId, curriculum, now = Date.now()) {
+  const item = shopItems.find(item => item.id === itemId);
+  if (!item || !curriculum.some(skill => skill.chapter === item.chapterId)) throw new Error('Этот товар недоступен.');
+  // Repeated clicks and access already earned through learning never spend coins.
+  if (hasChapterPass(state, item.chapterId) || chapterAvailable(state, item.chapterId, curriculum)) return state;
+  if (!Number.isSafeInteger(state.coins) || state.coins < item.price) throw new Error('Недостаточно монет для покупки.');
+  if (!Number.isFinite(now) || now <= 0) throw new Error('Не удалось определить время покупки.');
+  return { ...state, coins: state.coins - item.price, purchases: [...(state.purchases || []), { itemId: item.id, price: item.price, purchasedAt: now }] };
 }
 export function targetLevel(state, skill) {
   return skill.levels.find(l => !state.progress[levelKey(skill, l)]?.passed) || skill.levels.at(-1);
@@ -123,6 +140,7 @@ export function normalizeState(raw, curriculum, now = Date.now()) {
   if (!raw || typeof raw !== 'object') return state;
   const legacy = raw.version !== 2;
   for (const key of ['coins', 'xp']) state[key] = count(raw[key]);
+  state.purchases = normalizePurchases(raw.purchases);
   state.answered = count(legacy ? raw.solved : raw.answered);
   state.correct = Math.min(state.answered, count(raw.correct));
   state.energy = Math.min(ENERGY_LIMIT, typeof raw.energy === 'number' ? count(raw.energy) : ENERGY_LIMIT);
