@@ -1,0 +1,8 @@
+.account-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+#accountDialog { max-width: 520px; width: calc(100% - 32px); }
+#accountStatus:empty { display: none; }
+@media (max-width: 400px) {
+  .header { gap: 10px; }
+  .header nav { gap: 9px; }
+  .account-actions { flex-direction: column; }
+}

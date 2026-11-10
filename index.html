@@ -7,13 +7,15 @@
   <meta name="description" content="Изучай искусственный интеллект короткими квизами: понятная теория, дерево навыков и личный прогресс.">
   <title>AI Magic — дерево навыков</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="auth.css">
   <script type="module" src="app.js"></script>
+  <script type="module" src="auth.js"></script>
 </head>
 <body>
   <a class="skip" href="#tree-heading">Перейти к навыкам</a>
   <header class="header">
     <a href="#" class="logo" aria-label="AI Magic, главная"><span aria-hidden="true">✳</span> AI<b>MAGIC</b></a>
-    <nav aria-label="Основная навигация"><a class="nav-current" href="#tree-heading">Дерево навыков</a><a class="nav-library" href="library.html">Литература</a><button class="text-button" id="help">Как играть</button></nav>
+    <nav aria-label="Основная навигация"><a class="nav-current" href="#tree-heading">Дерево навыков</a><a class="nav-library" href="library.html">Литература</a><button class="text-button" id="help">Как играть</button><button class="text-button" id="accountButton">Войти</button></nav>
     <span class="local-label"><span class="status-dot"></span> Твой личный прогресс</span>
   </header>
   <main class="wrap">
@@ -42,6 +44,7 @@
     <footer class="footer"><span>AI MAGIC <span class="muted">/ Маленькие шаги. Новые возможности.</span></span><button class="text-button" id="reset">Сбросить прогресс</button></footer>
   </main>
   <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-top"><span>✦ AI MAGIC <span class="muted">/ ОБУЧЕНИЕ</span></span><button id="closeDialog" class="icon-button" aria-label="Закрыть окно">×</button></div><div id="dialogContent"></div></dialog>
+  <dialog id="accountDialog" aria-labelledby="accountTitle"><div class="dialog-top"><span>✦ AI MAGIC / АККАУНТ</span><button id="accountClose" class="icon-button" aria-label="Закрыть окно">×</button></div><h2 class="dialog-title" id="accountTitle">Личный кабинет</h2><p class="dialog-copy" id="accountStatus" role="status"></p><div id="accountLogin"><p class="dialog-copy">Войдите через социальную сеть или создайте аккаунт при первом входе.</p><div class="account-actions"><button class="primary" data-provider="github">Войти через GitHub</button><button class="secondary" data-provider="google">Войти через Google</button></div></div><div id="accountProfile" hidden><p class="dialog-copy"><strong id="accountName"></strong><br><span id="accountEmail"></span></p><p class="dialog-note">Синхронизация прогресса пока не подключена: прогресс хранится в этом браузере.</p><button class="secondary" id="accountLogout">Выйти</button></div></dialog>
   <noscript><p class="notice">Для квизов нужно включить JavaScript в браузере.</p></noscript>
 </body>
 </html>
