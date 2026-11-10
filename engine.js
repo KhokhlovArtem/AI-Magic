@@ -70,7 +70,7 @@ export function currentQuestion(state, curriculum) {
   const question = level?.questions.find(q => q.id === item?.id);
   return { skill, level, question, item, answer: active.answers[active.index] };
 }
-export function submitAnswer(state, choice, curriculum, now = Date.now()) {
+export function submitAnswer(state, choice, curriculum, now = Date.now(), coinLimit = Infinity) {
   const active = state.active;
   if (!active || active.phase !== 'question' || active.answers[active.index]) return state;
   const { question, level, skill } = currentQuestion(state, curriculum);
@@ -79,11 +79,12 @@ export function submitAnswer(state, choice, curriculum, now = Date.now()) {
   if (state.energy < 1) throw new Error('Энергия закончилась. Ответ можно отправить после восстановления.');
   const correct = gradeAnswer(question, choice);
   const earned = correct && !state.rewards.includes(question.id);
-  const answer = { questionId: question.id, choice, correct, earned };
+  const coinEarned = earned && state.coins < coinLimit;
+  const answer = { questionId: question.id, choice, correct, earned, coinEarned };
   const updated = { ...state,
     energy: state.energy - 1, refillAt: state.refillAt || now + REFILL_MS,
     answered: state.answered + 1, correct: state.correct + Number(correct),
-    coins: state.coins + Number(earned), xp: state.xp + Number(earned) * 10,
+    coins: state.coins + Number(coinEarned), xp: state.xp + Number(earned) * 10,
     rewards: earned ? [...state.rewards, question.id] : state.rewards,
     active: { ...active, answers: [...active.answers, answer] }
   };

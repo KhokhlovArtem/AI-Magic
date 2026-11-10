@@ -5,6 +5,8 @@ const $ = selector => document.querySelector(selector);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const skillById = id => curriculum.find(s => s.id === id);
 let state = createState(), view = null;
+let signedIn = false;
+window.addEventListener('ai-magic-auth', event => { signedIn = event.detail.signedIn; });
 function notice(text) { $('#notice').hidden = false; $('#notice').textContent = text; }
 function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -129,9 +131,11 @@ function showQuiz(focus = true) {
   const active = state.active, { skill, level, question: q, item, answer } = currentQuestion(state, curriculum);
   const body = q.type === 'blocks' ? blockQuestion(q, item, answer) : `<div class="answers">${item.order.map((choice, i) => `<button class="answer ${answer ? choice === q.correct ? 'correct' : choice === answer.choice ? 'wrong' : '' : ''}" data-choice="${choice}" ${answer ? 'disabled' : ''}><span class="letter" aria-hidden="true">${answer && choice === q.correct ? '✓' : answer && choice === answer.choice ? '×' : String.fromCharCode(65 + i)}</span><span>${esc(q.options[choice])}</span></button>`).join('')}</div>`;
   show(`<p class="dialog-eyebrow">${esc(skill.name)} / ${esc(level.name)}</p><div class="quiz-progress" aria-label="Задание ${active.index + 1} из 5">${active.questions.map((_, i) => `<i class="${active.answers[i] ? active.answers[i].correct ? 'correct' : 'wrong' : i === active.index ? 'current' : ''}"></i>`).join('')}</div><p class="dialog-note">Задание ${active.index + 1} из 5 · ${state.energy} энергии · ${q.type === 'blocks' ? 'Сборка из блоков' : 'Выбор ответа'}</p>${heading(q.text)}${body}${answer ? `<div class="feedback ${answer.correct ? '' : 'wrong'}" role="status"><strong>${answer.correct ? 'Верно!' : 'Разберём решение'}</strong>${esc(q.explanation)}${!answer.correct ? `<p>Верное решение: ${esc(solution(q))}</p>` : ''}<p class="dialog-note">${answer.earned ? '+1 монета · +10 XP' : answer.correct ? 'Награда за это задание уже получена.' : 'Награда не начислена.'}</p></div><button class="primary full" id="next">${active.index === 4 ? 'Посмотреть результат' : 'Следующее задание →'}</button>` : '<p class="dialog-note">Одно отправленное решение на задание. Можно закрыть окно — попытка сохранится.</p>'}<button class="link-button quiz-theory" id="theory">Вернуться к теории</button>`, 'quiz', skill.id, level.id, focus);
+  if (answer?.earned && answer.coinEarned === false) dialog.querySelector('.feedback .dialog-note').textContent = '+10 XP · достигнут лимит гостевых монет.';
   function submit(choice) {
     try {
-      commit(s => s.active?.startedAt === active.startedAt && currentQuestion(s, curriculum)?.question.id === q.id ? submitAnswer(s, choice, curriculum) : s);
+      commit(s => s.active?.startedAt === active.startedAt && currentQuestion(s, curriculum)?.question.id === q.id ? submitAnswer(s, choice, curriculum, Date.now(), signedIn ? Infinity : 100) : s);
+      if (!signedIn && state.coins >= 100) notice('Без входа можно заработать не более 100 монет. Войдите в аккаунт, чтобы продолжить.');
       showQuiz(); $('#next')?.focus();
     } catch (e) { notice(e.message); }
   }
@@ -156,6 +160,7 @@ function showResult() {
   const score = active.answers.filter(a => a.correct).length, passed = score >= level.passScore, wrong = active.answers.filter(a => !a.correct), earned = active.answers.filter(a => a.earned).length;
   const newlyAvailable = !active.practice && passed && index === 0 ? curriculum.filter(s => s.prerequisites.includes(skill.id) && unlocked(state, s, curriculum) && !passedLevels(state, s)) : [];
   show(`<p class="dialog-eyebrow">${esc(skill.name)} / Уровень ${index + 1}</p>${heading(passed ? active.practice ? 'Знания закреплены!' : `Уровень ${index + 1} пройден!` : 'Продолжим практику')}<div class="score">${score}<small>/ 5 верных решений</small></div><p class="dialog-copy">${passed ? active.practice ? 'Повторение помогает закрепить материал.' : index < 2 ? `Открыт уровень ${index + 2}: ${skill.levels[index + 1].name}.` : 'Все три уровня этой темы освоены!' : active.practice ? 'Прежний зачёт сохраняется. Разбери ошибки.' : 'Для зачёта нужно 4 из 5. Вернись к теории и разбери ошибки.'}</p>${newlyAvailable.length ? `<p class="unlock-message">Открыты темы: ${newlyAvailable.map(s => esc(s.name)).join(', ')}.</p>` : ''}<div class="quiz-facts"><span>Монеты: +${earned}</span><span>+${earned * 10} XP</span><span>−5 энергии</span></div>${wrong.length ? `<div class="review"><h3>Разбор ошибок · ${wrong.length}</h3>${wrong.map(a => { const q = level.questions.find(q => q.id === a.questionId); return `<div class="review-item"><strong>${esc(q.text)}</strong><p class="wrong-text">Твой ответ: ${esc(responseText(q, a.choice))}</p><p class="right-text">Верное решение: ${esc(solution(q))}</p><p>${esc(q.explanation)}</p></div>`; }).join('')}</div>` : '<p class="dialog-copy">Все решения верные. Отличная работа!</p>'}<div class="dialog-actions"><button class="secondary" id="revisit">${passed && index < 2 ? 'К следующему уровню' : 'Вернуться к теме'}</button><button class="primary" id="finish">К дереву навыков →</button></div>`, 'result', skill.id, level.id);
+  dialog.querySelector('.quiz-facts span').textContent = `Монеты: +${active.answers.filter(a => a.coinEarned ?? a.earned).length}`;
   $('#finish').onclick = () => { commit(finishQuiz); closeDialog(); };
   $('#revisit').onclick = () => { commit(finishQuiz); showSkill(skill.id, passed && index < 2 ? skill.levels[index + 1].id : level.id); };
 }

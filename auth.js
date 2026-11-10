@@ -18,6 +18,7 @@ function setBusy(value) {
 }
 function showSession(session) {
   const user = session?.user;
+  window.dispatchEvent(new CustomEvent('ai-magic-auth', { detail: { signedIn: Boolean(user) } }));
   login.hidden = Boolean(user);
   profile.hidden = !user;
   button.textContent = user ? 'Кабинет' : 'Войти';
